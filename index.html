@@ -14,7 +14,7 @@ label{font-size:15px;font-weight:700;display:flex;flex-direction:column;gap:7px}
 input,select,button{font:inherit;border-radius:7px}
 .identity input,.identity select{padding:11px 12px;border:1px solid #bbb;background:#fff;min-width:260px}
 button{padding:12px 18px;border:0;background:var(--purple);color:#fff;font-weight:700;cursor:pointer}
-button:hover{background:var(--purple2)} button.secondary{background:#5b6773} button.danger{background:#ab3030}
+button:hover{background:var(--purple2)} button:disabled{opacity:.65;cursor:not-allowed} button.secondary{background:#5b6773} button.danger{background:#ab3030}
 .period-info{margin-left:auto;background:#f6edf5;border-left:4px solid var(--purple);padding:11px 14px;min-width:280px}
 .table-wrap{overflow:auto;border:1px solid var(--line);border-radius:5px}
 table{border-collapse:collapse;width:100%;min-width:1160px}
@@ -42,6 +42,7 @@ tfoot td{font-weight:700;background:#f2eaf1}.status{min-height:22px;margin:4px 0
 <button id="showMonth">Visa månad</button>
 <button id="save">Spara lokalt</button>
 <button id="export" class="secondary">Exportera CSV</button>
+<button id="sendToGitHub">Skicka tidrapport</button>
 <button id="print" class="secondary">Skriv ut</button>
 <button id="clear" class="danger">Rensa månad</button>
 </section>
@@ -54,7 +55,7 @@ tfoot td{font-weight:700;background:#f2eaf1}.status{min-height:22px;margin:4px 0
 <div class="summary">
 <div class="card">Arbetad tid<b id="cardWork">00:00</b></div><div class="card">Semester<b id="cardVacation">0 dagar</b></div><div class="card">VAB<b id="cardVab">0 dagar</b></div><div class="card">Sjuk<b id="cardSick">0 dagar</b></div><div class="card">Tjänstledig<b id="cardLeave">0 dagar</b></div><div class="card">OB totalt<b id="cardOb">00:00</b></div>
 </div>
-<p class="small">Uppgifterna sparas lokalt i den här webbläsaren, separat för varje månad. Exportera CSV för att lämna vidare underlaget.</p>
+<p class="small">Uppgifterna sparas lokalt i den här webbläsaren, separat för varje månad. Välj Skicka tidrapport för att spara underlaget i det privata GitHub-arkivet.</p>
 </main>
 <script>
 const $=s=>document.querySelector(s),tbody=$('#sheet tbody');
@@ -74,6 +75,83 @@ function save(){localStorage.setItem(storageKey(),JSON.stringify(collect()));msg
 function csv(){let info=collect(),lines=[['Namn',info.name],['Månad',monthRange().label],[],['Datum','Arbetstid','Semester','VAB','Sjuk','Tjänstledig','O.B.','O.B. helg','Kommentar']];tbody.querySelectorAll('tr').forEach(tr=>lines.push([tr.dataset.date,...fields.map(f=>tr.querySelector(`[data-f=${f}]`).value)]));lines.push([],['SUMMA',$('#sumWork').textContent,$('#sumVacation').textContent,$('#sumVab').textContent,$('#sumSick').textContent,$('#sumLeave').textContent,$('#sumOb').textContent,$('#sumObWeekend').textContent,'']);let text='\ufeff'+lines.map(r=>r.map(v=>'"'+String(v??'').replaceAll('"','""')+'"').join(';')).join('\r\n'),a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type:'text/csv;charset=utf-8'}));a.download=`loneunderlag_${(info.name||'namn').trim().replaceAll(' ','_')}_${info.month}.csv`;a.click();URL.revokeObjectURL(a.href);msg('CSV-filen skapades.')}
 function clearMonth(){localStorage.removeItem(storageKey());$('#name').value='';showMonth();msg('Den valda månaden rensades.')}
 function msg(t){$('#status').textContent=t;clearTimeout(window.mt);window.mt=setTimeout(()=>$('#status').textContent='',3000)}
-fillMonths();$('#showMonth').onclick=showMonth;$('#month').onchange=showMonth;$('#save').onclick=save;$('#export').onclick=csv;$('#print').onclick=()=>print();$('#clear').onclick=clearMonth;showMonth();
+
+const REPORT_API = "https://lingering-night-5a74.patrik-olof-gustafsson.workers.dev/";
+
+function csvText(){
+  const info=collect();
+  const lines=[
+    ['Namn',info.name],
+    ['Månad',monthRange().label],
+    [],
+    ['Datum','Arbetstid','Semester','VAB','Sjuk','Tjänstledig','O.B.','O.B. helg','Kommentar']
+  ];
+  tbody.querySelectorAll('tr').forEach(tr=>{
+    lines.push([tr.dataset.date,...fields.map(f=>tr.querySelector(`[data-f=${f}]`).value)]);
+  });
+  lines.push([],['SUMMA',$('#sumWork').textContent,$('#sumVacation').textContent,$('#sumVab').textContent,$('#sumSick').textContent,$('#sumLeave').textContent,$('#sumOb').textContent,$('#sumObWeekend').textContent,'']);
+  return '\ufeff'+lines.map(r=>r.map(v=>'"'+String(v??'').replaceAll('"','""')+'"').join(';')).join('\r\n');
+}
+
+async function sendReportToGitHub(){
+  const button=$('#sendToGitHub');
+  const info=collect();
+  const name=(info.name||'').trim();
+  const period=info.month;
+
+  if(!name){
+    alert('Fyll i namn innan rapporten skickas.');
+    $('#name').focus();
+    return;
+  }
+
+  button.disabled=true;
+  button.textContent='Skickar...';
+  msg('Skickar tidrapport...');
+
+  try{
+    const response=await fetch(REPORT_API,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        name,
+        period,
+        csv:csvText(),
+        rows:info.rows,
+        totals:{
+          work:$('#sumWork').textContent,
+          vacation:$('#sumVacation').textContent,
+          vab:$('#sumVab').textContent,
+          sick:$('#sumSick').textContent,
+          leave:$('#sumLeave').textContent,
+          ob:$('#sumOb').textContent,
+          obWeekend:$('#sumObWeekend').textContent
+        },
+        submittedAt:new Date().toISOString()
+      })
+    });
+
+    const text=await response.text();
+    let result={};
+    try{result=JSON.parse(text);}catch{result={message:text};}
+
+    if(!response.ok || result.success===false){
+      throw new Error(result.error||result.message||result.githubResponse||`HTTP ${response.status}`);
+    }
+
+    save();
+    msg('Tidrapporten har skickats och sparats.');
+    alert('Tidrapporten har sparats i GitHub.\n\nFil: '+(result.filename||'skapad fil'));
+  }catch(error){
+    console.error(error);
+    msg('Rapporten kunde inte skickas.');
+    alert('Rapporten kunde inte skickas.\n\n'+error.message);
+  }finally{
+    button.disabled=false;
+    button.textContent='Skicka tidrapport';
+  }
+}
+
+fillMonths();$('#showMonth').onclick=showMonth;$('#month').onchange=showMonth;$('#save').onclick=save;$('#export').onclick=csv;$('#sendToGitHub').onclick=sendReportToGitHub;$('#print').onclick=()=>print();$('#clear').onclick=clearMonth;showMonth();
 </script>
 </body></html>
