@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tidrapportering Lyktan Fsk</title>
+<style>
+:root{--purple:#8b3f83;--purple2:#6f3069;--line:#d9d9d9;--weekend:#fff4d8}
+*{box-sizing:border-box} body{margin:0;font-family:Arial,Helvetica,sans-serif;color:#242424;background:#f3f3f3}
+header{background:var(--purple);color:#fff;padding:22px 26px;font-size:30px;font-weight:700}
+main{max-width:1450px;margin:24px auto;background:#fff;padding:24px;border-radius:12px;box-shadow:0 2px 14px #0002}
+.identity,.toolbar{display:flex;gap:18px;flex-wrap:wrap;align-items:end;margin-bottom:20px}
+label{font-size:15px;font-weight:700;display:flex;flex-direction:column;gap:7px}
+input,select,button{font:inherit;border-radius:7px}
+.identity input,.identity select{padding:11px 12px;border:1px solid #bbb;background:#fff;min-width:260px}
+button{padding:12px 18px;border:0;background:var(--purple);color:#fff;font-weight:700;cursor:pointer}
+button:hover{background:var(--purple2)} button:disabled{opacity:.65;cursor:not-allowed} button.secondary{background:#5b6773} button.danger{background:#ab3030}
+.period-info{margin-left:auto;background:#f6edf5;border-left:4px solid var(--purple);padding:11px 14px;min-width:280px}
+.table-wrap{overflow:auto;border:1px solid var(--line);border-radius:5px}
+table{border-collapse:collapse;width:100%;min-width:1160px}
+th,td{border:1px solid var(--line);padding:6px;text-align:center}
+th{background:#fafafa;position:sticky;top:0;z-index:2;font-size:16px}
+th:first-child,td:first-child{position:sticky;left:0;background:#fff;z-index:3;font-weight:700;white-space:nowrap}
+td input{width:100%;min-width:80px;padding:9px 6px;text-align:center;border:1px solid transparent;border-radius:5px;background:#fff}
+td input:focus{outline:2px solid #bd80b7;border-color:var(--purple)}
+.weekend td{background:var(--weekend)} .weekend td:first-child{background:#ffe9b2}
+tfoot td{font-weight:700;background:#f2eaf1}.status{min-height:22px;margin:4px 0 12px;color:#276c2d;font-weight:700}.small{font-size:12px;color:#666;margin-bottom:0}
+.summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:18px 0}.card{background:#f6f1f5;padding:13px;border-radius:7px;border-top:4px solid var(--purple)}.card b{display:block;font-size:20px;margin-top:5px}
+@media(max-width:700px){header{font-size:23px}.identity>*{width:100%}.identity input,.identity select{width:100%}.period-info{margin-left:0}}
+@media print{header,.toolbar,.status,.small{display:none!important}body{background:#fff}main{box-shadow:none;margin:0;padding:0}.identity{margin-bottom:8px}.identity input,.identity select{border:0;padding:0}.table-wrap{overflow:visible;border:0}table{min-width:0;font-size:9px}td input{border:0;padding:2px;font-size:9px}.summary{font-size:10px}.card{padding:5px}.card b{font-size:12px}}
+</style>
+</head>
+<body>
+<header>Tidrapportering Lyktan Fsk</header>
+<main>
+<section class="identity">
+<label>Namn<input id="name" placeholder="Ange namn"></label>
+<label>Månad<select id="month"></select></label>
+<div class="period-info"><strong>Vald period</strong><div id="periodText"></div></div>
+</section>
+<section class="toolbar">
+<button id="showMonth">Visa månad</button>
+<button id="sendToGitHub">Skicka tidrapport</button>
+<button id="print" class="secondary">Skriv ut</button>
+<button id="clear" class="danger">Rensa månad</button>
+</section>
+<div id="status" class="status"></div>
+<div class="table-wrap"><table id="sheet">
+<thead><tr><th>Datum</th><th>Arbetstid</th><th>Semester</th><th>VAB</th><th>Sjuk</th><th>Tjänstledig</th><th>O.B.</th><th>O.B. helg</th><th>Kommentar</th></tr></thead>
+<tbody></tbody>
+<tfoot><tr><td>Summa</td><td id="sumWork">00:00</td><td id="sumVacation">0</td><td id="sumVab">0</td><td id="sumSick">0</td><td id="sumLeave">0</td><td id="sumOb">00:00</td><td id="sumObWeekend">00:00</td><td></td></tr></tfoot>
+</table></div>
+<div class="summary">
+<div class="card">Arbetad tid<b id="cardWork">00:00</b></div><div class="card">Semester<b id="cardVacation">0 dagar</b></div><div class="card">VAB<b id="cardVab">0 dagar</b></div><div class="card">Sjuk<b id="cardSick">0 dagar</b></div><div class="card">Tjänstledig<b id="cardLeave">0 dagar</b></div><div class="card">OB totalt<b id="cardOb">00:00</b></div>
+</div>
+<p class="small">Uppgifterna sparas lokalt i den här webbläsaren, separat för varje månad. Välj Skicka tidrapport för att spara underlaget i det privata GitHub-arkivet.</p>
+</main>
+<script>
+const $=s=>document.querySelector(s),tbody=$('#sheet tbody');
+const months=['Januari','Februari','Mars','April','Maj','Juni','Juli','Augusti','September','Oktober','November','December'];
+const fields=['work','vacation','vab','sick','leave','ob','obWeekend','comment'];
+const pad=n=>String(n).padStart(2,'0'); const iso=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const minutes=v=>{if(!v)return 0;let [h,m]=v.split(':').map(Number);return(h||0)*60+(m||0)}; const hm=m=>`${pad(Math.floor(m/60))}:${pad(m%60)}`;
+function fillMonths(){let now=new Date(),html='';for(let y=now.getFullYear()-1;y<=now.getFullYear()+3;y++)for(let m=0;m<12;m++){let v=`${y}-${pad(m+1)}`;html+=`<option value="${v}" ${y===now.getFullYear()&&m===now.getMonth()?'selected':''}>${months[m]} ${y}</option>`}$('#month').innerHTML=html}
+function monthRange(){let [y,m]=$('#month').value.split('-').map(Number);return{start:new Date(y,m-1,1,12),end:new Date(y,m,0,12),label:`${months[m-1]} ${y}`}}
+function storageKey(){return 'timesheet-'+$('#month').value}
+function esc(v){return String(v||'').replaceAll('&','&amp;').replaceAll('"','&quot;').replaceAll('<','&lt;')}
+function addRow(date,data={}){let tr=document.createElement('tr'),d=new Date(date+'T12:00:00');if([0,6].includes(d.getDay()))tr.className='weekend';tr.dataset.date=date;tr.innerHTML=`<td>${date}</td><td><input data-f="work" type="time" value="${esc(data.work)}"></td><td><input data-f="vacation" type="number" min="0" max="1" step="0.5" value="${esc(data.vacation)}"></td><td><input data-f="vab" type="number" min="0" max="1" step="0.5" value="${esc(data.vab)}"></td><td><input data-f="sick" type="number" min="0" max="1" step="0.5" value="${esc(data.sick)}"></td><td><input data-f="leave" type="number" min="0" max="1" step="0.5" value="${esc(data.leave)}"></td><td><input data-f="ob" type="time" value="${esc(data.ob)}"></td><td><input data-f="obWeekend" type="time" value="${esc(data.obWeekend)}"></td><td><input data-f="comment" value="${esc(data.comment)}"></td>`;tr.querySelectorAll('input').forEach(x=>x.addEventListener('input',calc));tbody.appendChild(tr)}
+function showMonth(){let r=monthRange(),saved=JSON.parse(localStorage.getItem(storageKey())||'null');tbody.innerHTML='';$('#periodText').textContent=`1 ${r.label} – ${r.end.getDate()} ${r.label}`;if(saved?.name)$('#name').value=saved.name;for(let d=new Date(r.start);d<=r.end;d.setDate(d.getDate()+1)){let key=iso(d);addRow(key,saved?.rows?.[key]||{})}calc();msg(saved?'Sparad månad laddades.':'Månaden är klar för registrering.')}
+function calc(){let sw=0,so=0,sow=0,s=[0,0,0,0];tbody.querySelectorAll('tr').forEach(tr=>{sw+=minutes(tr.querySelector('[data-f=work]').value);so+=minutes(tr.querySelector('[data-f=ob]').value);sow+=minutes(tr.querySelector('[data-f=obWeekend]').value);['vacation','vab','sick','leave'].forEach((f,i)=>s[i]+=Number(tr.querySelector(`[data-f=${f}]`).value||0))});$('#sumWork').textContent=$('#cardWork').textContent=hm(sw);$('#sumOb').textContent=hm(so);$('#sumObWeekend').textContent=hm(sow);['sumVacation','sumVab','sumSick','sumLeave'].forEach((id,i)=>$('#'+id).textContent=s[i].toLocaleString('sv-SE'));['cardVacation','cardVab','cardSick','cardLeave'].forEach((id,i)=>$('#'+id).textContent=s[i].toLocaleString('sv-SE')+' dagar');$('#cardOb').textContent=hm(so+sow)}
+function collect(){let rows={};tbody.querySelectorAll('tr').forEach(tr=>{rows[tr.dataset.date]={};fields.forEach(f=>rows[tr.dataset.date][f]=tr.querySelector(`[data-f=${f}]`).value)});return{name:$('#name').value,month:$('#month').value,rows}}
+function save(){localStorage.setItem(storageKey(),JSON.stringify(collect()));msg('Månaden sparades lokalt.')}
+function csv(){let info=collect(),lines=[['Namn',info.name],['Månad',monthRange().label],[],['Datum','Arbetstid','Semester','VAB','Sjuk','Tjänstledig','O.B.','O.B. helg','Kommentar']];tbody.querySelectorAll('tr').forEach(tr=>lines.push([tr.dataset.date,...fields.map(f=>tr.querySelector(`[data-f=${f}]`).value)]));lines.push([],['SUMMA',$('#sumWork').textContent,$('#sumVacation').textContent,$('#sumVab').textContent,$('#sumSick').textContent,$('#sumLeave').textContent,$('#sumOb').textContent,$('#sumObWeekend').textContent,'']);let text='\ufeff'+lines.map(r=>r.map(v=>'"'+String(v??'').replaceAll('"','""')+'"').join(';')).join('\r\n'),a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type:'text/csv;charset=utf-8'}));a.download=`loneunderlag_${(info.name||'namn').trim().replaceAll(' ','_')}_${info.month}.csv`;a.click();URL.revokeObjectURL(a.href);msg('CSV-filen skapades.')}
+function clearMonth(){localStorage.removeItem(storageKey());$('#name').value='';showMonth();msg('Den valda månaden rensades.')}
+function msg(t){$('#status').textContent=t;clearTimeout(window.mt);window.mt=setTimeout(()=>$('#status').textContent='',3000)}
+
+const REPORT_API = "https://lingering-night-5a74.patrik-olof-gustafsson.workers.dev/";
+
+function csvText(){
+  const info=collect();
+  const lines=[
+    ['Namn',info.name],
+    ['Månad',monthRange().label],
+    [],
+    ['Datum','Arbetstid','Semester','VAB','Sjuk','Tjänstledig','O.B.','O.B. helg','Kommentar']
+  ];
+  tbody.querySelectorAll('tr').forEach(tr=>{
+    lines.push([tr.dataset.date,...fields.map(f=>tr.querySelector(`[data-f=${f}]`).value)]);
+  });
+  lines.push([],['SUMMA',$('#sumWork').textContent,$('#sumVacation').textContent,$('#sumVab').textContent,$('#sumSick').textContent,$('#sumLeave').textContent,$('#sumOb').textContent,$('#sumObWeekend').textContent,'']);
+  return '\ufeff'+lines.map(r=>r.map(v=>'"'+String(v??'').replaceAll('"','""')+'"').join(';')).join('\r\n');
+}
+
+async function sendReportToGitHub(){
+  const button=$('#sendToGitHub');
+  const info=collect();
+  const name=(info.name||'').trim();
+  const period=info.month;
+
+  if(!name){
+    alert('Fyll i namn innan rapporten skickas.');
+    $('#name').focus();
+    return;
+  }
+
+  button.disabled=true;
+  button.textContent='Skickar...';
+  msg('Skickar tidrapport...');
+
+  try{
+    const response=await fetch(REPORT_API,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        name,
+        period,
+        csv:csvText(),
+        rows:info.rows,
+        totals:{
+          work:$('#sumWork').textContent,
+          vacation:$('#sumVacation').textContent,
+          vab:$('#sumVab').textContent,
+          sick:$('#sumSick').textContent,
+          leave:$('#sumLeave').textContent,
+          ob:$('#sumOb').textContent,
+          obWeekend:$('#sumObWeekend').textContent
+        },
+        submittedAt:new Date().toISOString()
+      })
+    });
+
+    const text=await response.text();
+    let result={};
+    try{result=JSON.parse(text);}catch{result={message:text};}
+
+    if(!response.ok || result.success===false){
+      throw new Error(result.error||result.message||result.githubResponse||`HTTP ${response.status}`);
+    }
+
+    save();
+    msg('Tidrapporten har skickats och sparats.');
+    alert('Tidrapporten har sparats i GitHub.\n\nFil: '+(result.filename||'skapad fil'));
+  }catch(error){
+    console.error(error);
+    msg('Rapporten kunde inte skickas.');
+    alert('Rapporten kunde inte skickas.\n\n'+error.message);
+  }finally{
+    button.disabled=false;
+    button.textContent='Skicka tidrapport';
+  }
+}
+
+fillMonths();$('#showMonth').onclick=showMonth;$('#month').onchange=showMonth;$('#sendToGitHub').onclick=sendReportToGitHub;$('#print').onclick=()=>print();$('#clear').onclick=clearMonth;showMonth();
+</script>
+</body></html>
