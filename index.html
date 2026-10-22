@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Tidrapportering Lyktan Fsk</title>
+<title>Frånvaro- och arbetstidsblankett</title>
 <style>
 :root{--purple:#8b3f83;--purple2:#6f3069;--line:#d9d9d9;--weekend:#fff4d8}
 *{box-sizing:border-box} body{margin:0;font-family:Arial,Helvetica,sans-serif;color:#242424;background:#f3f3f3}
@@ -31,7 +31,7 @@ tfoot td{font-weight:700;background:#f2eaf1}.status{min-height:22px;margin:4px 0
 </style>
 </head>
 <body>
-<header>Tidrapportering Lyktan Fsk</header>
+<header>Frånvaro- och arbetstidsblankett</header>
 <main>
 <section class="identity">
 <label>Namn<input id="name" placeholder="Ange namn"></label>
@@ -40,6 +40,8 @@ tfoot td{font-weight:700;background:#f2eaf1}.status{min-height:22px;margin:4px 0
 </section>
 <section class="toolbar">
 <button id="showMonth">Visa månad</button>
+<button id="save">Spara lokalt</button>
+<button id="export" class="secondary">Exportera CSV</button>
 <button id="sendToGitHub">Skicka tidrapport</button>
 <button id="print" class="secondary">Skriv ut</button>
 <button id="clear" class="danger">Rensa månad</button>
@@ -150,6 +152,6 @@ async function sendReportToGitHub(){
   }
 }
 
-fillMonths();$('#showMonth').onclick=showMonth;$('#month').onchange=showMonth;$('#sendToGitHub').onclick=sendReportToGitHub;$('#print').onclick=()=>print();$('#clear').onclick=clearMonth;showMonth();
+fillMonths();$('#showMonth').onclick=showMonth;$('#month').onchange=showMonth;$('#save').onclick=save;$('#export').onclick=csv;$('#sendToGitHub').onclick=sendReportToGitHub;$('#print').onclick=()=>print();$('#clear').onclick=clearMonth;showMonth();
 </script>
 </body></html>
